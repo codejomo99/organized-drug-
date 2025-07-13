@@ -1,4 +1,4 @@
-package com.side.drug;
+package com.side.drug.config;
 
 import java.io.IOException;
 
@@ -7,7 +7,6 @@ import org.springframework.stereotype.Component;
 
 import com.side.drug.service.ExcelImportService;
 
-import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 
 @Component
@@ -16,8 +15,7 @@ public class DataInitializer {
 
 	private final ExcelImportService excelImportService;
 
-	@PostConstruct
-	public void init() throws IOException {
+	public void loadExcel() throws IOException {
 		ClassPathResource file = new ClassPathResource("data/drugProfile.xlsx");
 		excelImportService.importExcel(file.getInputStream());
 	}
