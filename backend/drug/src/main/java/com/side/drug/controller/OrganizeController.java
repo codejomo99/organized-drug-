@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.side.drug.config.DataInitializer;
 import com.side.drug.service.DrugOrganizeService;
+import com.side.drug.service.OrganizeStatusService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -17,6 +18,7 @@ public class OrganizeController {
 
 	private final DrugOrganizeService organizeService;
 	private final DataInitializer dataInitializer;
+	private final OrganizeStatusService organizeStatusService;
 
 	// 수동 데이터 추가
 	@PostMapping("import")
@@ -31,5 +33,11 @@ public class OrganizeController {
 	public ResponseEntity<String> runOrganize() {
 		organizeService.organize();
 		return ResponseEntity.ok("Organizing completed!");
+	}
+
+	@PostMapping("/organize/stop")
+	public ResponseEntity<String> stopOrganize() {
+		organizeStatusService.stop();
+		return ResponseEntity.ok("Organize 중단 요청 완료");
 	}
 }
