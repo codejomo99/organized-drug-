@@ -6,9 +6,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.side.drug.model.DrugProfile;
 import com.side.drug.model.OrganizedDrugProfile;
@@ -24,15 +24,31 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class DrugOrganizeService {
 
+	// 메모리 플래그
+	private final AtomicBoolean runningFlag = new AtomicBoolean(false);
 
 	private final DrugProfileRepository rawRepo;
 	private final OrganizedDrugProfileRepository organizedRepo;
 	private final OrganizeStatusService statusService;
 	private final LogWebSocketHandler logWebSocketHandler;
 
-	public void organize() {
+	public synchronized void start() {
+		if (runningFlag.get()) return;
+		runningFlag.set(true);
 
-		// 1) 시작 플래그 ON
+		// 백그라운드로 실제 작업 실행
+		new Thread(this::organize).start();
+	}
+
+	/** 중단 요청 */
+	public void stop() {
+		runningFlag.set(false);
+		statusService.updateProgress(statusService.getLastProcessedId(), false);
+	}
+
+	/** 실제 집계 로직 */
+	private void organize() {
+		// 1) 시작 플래그 ON, DB에 기록
 		long lastId = statusService.getLastProcessedId();
 		statusService.updateProgress(lastId, true);
 
@@ -42,24 +58,30 @@ public class DrugOrganizeService {
 
 		// 3) 처리 루프
 		for (DrugProfile raw : rawList) {
-			// stop() 요청 시 바로 빠져나오기
-			if (!statusService.isRunning()) {
+			// in‐memory 플래그만 체크 ⇒ 즉시 중단
+			if (!runningFlag.get()) {
 				log(">>> Organize 중단됨 (ID: "+raw.getId()+")");
-				break;
+				return;
 			}
 
 			// 머지 로직
-			Optional<OrganizedDrugProfile> matched = organizedList.stream()
+			Optional<OrganizedDrugProfile> opt = organizedList.stream()
 				.filter(org -> isMatch(org, raw))
 				.findFirst();
 
-			if (matched.isPresent()) {
-				OrganizedDrugProfile org = matched.get();
+			if (opt.isPresent()) {
+				OrganizedDrugProfile org = opt.get();
 				org.setCompanyName(merge(org.getCompanyName(), raw.getCompanyName()));
 				org.setBrandName(merge(org.getBrandName(), raw.getBrandName()));
 				org.setInnName(merge(org.getInnName(), raw.getInnName()));
 				org.setCodeName(merge(org.getCodeName(), raw.getCodeName()));
-				log(">>> MERGE: "+raw.getCompanyName()+")");
+
+				log(">>> MERGE: "
+					+ raw.getCompanyName()
+					+ ", " + raw.getBrandName()
+					+ ", " + raw.getInnName()
+					+ ", " + raw.getCodeName());
+
 			} else {
 				organizedList.add(new OrganizedDrugProfile(
 					null,
@@ -71,25 +93,20 @@ public class DrugOrganizeService {
 				log(">>> NEW GROUP: "+raw.getCompanyName()+")");
 			}
 
-			//  테스트/디버깅용 잠깐 멈춤
-			try {
-				Thread.sleep(5);
-			} catch (InterruptedException e) {
-				Thread.currentThread().interrupt();
-			}
 
-			// 4) 진척도 업데이트 (플래그 유지)
+			// 진행 위치(DB 기록)
 			lastId = raw.getId();
 			statusService.updateProgress(lastId, true);
 		}
 
-		// 5) 결과 저장
+		// 4) 결과 저장
 		organizedRepo.deleteAllInBatch();
 		organizedRepo.saveAll(organizedList);
 		log(">>> 저장 완료: 총 "+organizedList.size()+"건");
 
-		// 6) 종료 플래그 OFF (lastId 유지)
+		// 5) 종료 플래그 OFF
 		statusService.updateProgress(lastId, false);
+		runningFlag.set(false);
 		log(">>> Organize 종료 (최종 ID: "+lastId+")");
 	}
 
