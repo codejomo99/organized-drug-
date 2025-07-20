@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import com.side.drug.model.OrganizeStatus;
 import com.side.drug.model.OrganizedDrugProfile;
@@ -19,6 +20,7 @@ import com.side.drug.repository.OrganizeStatusRepository;
 import com.side.drug.repository.OrganizedDrugProfileRepository;
 
 @SpringBootTest
+@Transactional
 @AutoConfigureMockMvc
 public class OrganizeControllerTest {
 
