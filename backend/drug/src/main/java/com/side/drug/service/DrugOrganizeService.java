@@ -47,7 +47,7 @@ public class DrugOrganizeService {
 	}
 
 	/** 실제 집계 로직 */
-	private void organize() {
+	public void organize() {
 		// 1) 시작 플래그 ON, DB에 기록
 		long lastId = statusService.getLastProcessedId();
 		statusService.updateProgress(lastId, true);

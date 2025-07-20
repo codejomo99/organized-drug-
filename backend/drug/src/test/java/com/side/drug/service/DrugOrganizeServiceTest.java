@@ -4,12 +4,15 @@ import static org.assertj.core.api.AssertionsForClassTypes.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.side.drug.model.DrugProfile;
@@ -18,6 +21,7 @@ import com.side.drug.repository.DrugProfileRepository;
 import com.side.drug.repository.OrganizedDrugProfileRepository;
 
 @SpringBootTest
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional
 class DrugOrganizeServiceTest {
 
@@ -38,6 +42,10 @@ class DrugOrganizeServiceTest {
 		organizedRepo.deleteAll();
 		drugRepo.deleteAll();
 		statusService.updateProgress(0L, false);
+
+		AtomicBoolean runningFlag =
+			(AtomicBoolean) ReflectionTestUtils.getField(organizeService, "runningFlag");
+		runningFlag.set(true);
 	}
 
 	@Test
