@@ -3,64 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <title>Drug Organize</title>
+    <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
 <h1>Organize Controller</h1>
 
-<button onclick="startOrganize()">Organize 시작</button>
-<button onclick="stopOrganize()">Organize 중단</button>
-<button onclick="setOrganize()">Excel 파일 저장</button>
+<div class="toolbar">
+    <button onclick="startOrganize()">Organize 시작</button>
+    <button onclick="stopOrganize()">Organize 중단</button>
+    <button onclick="setOrganize()">엑셀 Import</button>
+    <div class="progress-badge">
+        진행: <span id="processed">0</span> / <span id="total">0</span>
+    </div>
+</div>
 
+<pre id="log"></pre>
 
-<pre id="log" style="background:#eee;padding:1rem;height:300px;overflow:auto;"></pre>
-
-<script>
-    const logBox = document.getElementById("log");
-    const socket = new WebSocket("ws://localhost:8080/ws/logs");
-
-    socket.onmessage = function (event) {
-        logBox.textContent += event.data;
-
-        // 오래된 로그 자동 제거 (렌더링 최적화)
-        if (logBox.textContent.length > 20000) {
-            logBox.textContent = logBox.textContent.slice(-10000);
-        }
-
-        logBox.scrollTop = logBox.scrollHeight;
-    };
-
-    function startOrganize() {
-        fetch('/organize', {method: 'POST'});
-    }
-
-    function stopOrganize() {
-        fetch('/organize/stop', {method: 'POST'});
-    }
-
-
-    function setOrganize() {
-        // 1) 진행중 메시지 추가
-        logBox.textContent += "[IMPORT] 진행중...\n";
-        logBox.scrollTop = logBox.scrollHeight;
-
-        fetch('/organize/import', { method: 'POST' })
-            .then(response => response.text())
-            .then(text => {
-                // 2) '진행중'을 '완료'로 교체
-                logBox.textContent = logBox.textContent.replace(
-                    /\[IMPORT\] 진행중\.\.\.\n$/,
-                    `[IMPORT] 완료: ${text}\n`
-                );
-                logBox.scrollTop = logBox.scrollHeight;
-            })
-            .catch(err => {
-                logBox.textContent = logBox.textContent.replace(
-                    /\[IMPORT\] 진행중\.\.\.\n$/,
-                    `[IMPORT] 오류: ${err}\n`
-                );
-                logBox.scrollTop = logBox.scrollHeight;
-            });
-    }
-</script>
+<script src="./js/app.js"></script>
 </body>
 </html>
