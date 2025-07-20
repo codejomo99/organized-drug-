@@ -1,75 +1,64 @@
 package com.side.drug.controller;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-
+import com.side.drug.service.DrugOrganizeService;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.side.drug.model.OrganizeStatus;
-import com.side.drug.repository.DrugProfileRepository;
-import com.side.drug.repository.OrganizeStatusRepository;
-import com.side.drug.repository.OrganizedDrugProfileRepository;
-import com.side.drug.service.OrganizeStatusService;
-
 @SpringBootTest
-@Transactional
 @AutoConfigureMockMvc
-public class OrganizeControllerTest {
+@Transactional
+@AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
+class OrganizeControllerTest {
 
 	@Autowired
 	private MockMvc mockMvc;
 
 	@Autowired
-	private OrganizeStatusRepository statusRepo;
-
-	@Autowired
-	private OrganizedDrugProfileRepository organizedRepo;
-
-	@Autowired
-	private DrugProfileRepository drugRepo;
-
-	@Autowired
-	private OrganizeStatusService statusService;
+	private DrugOrganizeService organizeService;
 
 	@BeforeEach
 	void setUp() {
-		organizedRepo.deleteAll();
-		drugRepo.deleteAll();
-		statusService.updateProgress(0L, false);
+		// in‑memory flag 초기화
+		AtomicBoolean flag =
+			(AtomicBoolean) ReflectionTestUtils.getField(organizeService, "runningFlag");
+		flag.set(false);
 	}
 
 	@Test
-	@DisplayName("1. organize 실행 후 중단 → resume 되는지 확인")
-	void testOrganizeAndResumeFlow() throws Exception {
-		// 1. 실행
+	@DisplayName("API 통해 start → stop → restart 시 in-memory flag 변화를 확인")
+	void testInMemoryApi() throws Exception {
+		AtomicBoolean flag =
+			(AtomicBoolean) ReflectionTestUtils.getField(organizeService, "runningFlag");
+
+		// 1) 시작
 		mockMvc.perform(post("/organize"))
 			.andExpect(status().isOk());
+		// 바로 in-memory 플래그가 켜져야 한다
+		assertTrue(flag.get(), "POST /organize 후 runningFlag=true 이어야 한다");
 
-		// 2. 중단 요청
+		// 2) 중단
 		mockMvc.perform(post("/organize/stop"))
 			.andExpect(status().isOk());
+		// 즉시 꺼져야 한다
+		assertFalse(flag.get(), "POST /organize/stop 후 runningFlag=false 이어야 한다");
 
-		// 중단 상태 확인
-		OrganizeStatus status = statusRepo.findById(1L).orElseThrow();
-		assertFalse(status.isRunning());
-		System.out.println(">>> 중단 후 isRunning: " + status.isRunning());
-
-		// 3. 재시작
+		// 3) 재시작
 		mockMvc.perform(post("/organize"))
 			.andExpect(status().isOk());
-
-		// 재시작 상태 확인
-		OrganizeStatus resumed = statusRepo.findById(1L).orElseThrow();
-		assertTrue(resumed.isRunning());
-		System.out.println(">>> 재시작 후 isRunning: " + resumed.isRunning());
+		// 다시 켜져야 한다
+		assertTrue(flag.get(), "두 번째 POST /organize 후 runningFlag=true 이어야 한다");
 	}
 }
