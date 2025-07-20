@@ -6,14 +6,15 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.side.drug.model.DrugProfile;
 import com.side.drug.model.OrganizedDrugProfile;
 import com.side.drug.repository.DrugProfileRepository;
 import com.side.drug.repository.OrganizedDrugProfileRepository;
+import com.side.drug.websocket.LogWebSocketHandler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,46 +24,64 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public class DrugOrganizeService {
 
+	// 메모리 플래그
+	private final AtomicBoolean runningFlag = new AtomicBoolean(false);
 
 	private final DrugProfileRepository rawRepo;
 	private final OrganizedDrugProfileRepository organizedRepo;
 	private final OrganizeStatusService statusService;
+	private final LogWebSocketHandler logWebSocketHandler;
 
-	@Transactional
-	public void organize() {
-		// 이미 실행 중이면 중복 방지
-		if (statusService.isRunning()) {
-			throw new IllegalStateException("이미 집계가 실행 중입니다.");
-		}
+	public synchronized void start() {
+		if (runningFlag.get()) return;
+		runningFlag.set(true);
 
-		// 시작 전 실행 상태 true로 설정
-		Long lastId = statusService.getLastProcessedId();
+		// 백그라운드로 실제 작업 실행
+		new Thread(this::organize).start();
+	}
+
+	/** 중단 요청 */
+	public void stop() {
+		runningFlag.set(false);
+		statusService.updateProgress(statusService.getLastProcessedId(), false);
+	}
+
+	/** 실제 집계 로직 */
+	private void organize() {
+		// 1) 시작 플래그 ON, DB에 기록
+		long lastId = statusService.getLastProcessedId();
 		statusService.updateProgress(lastId, true);
 
-		// 마지막 처리된 ID 이후부터 조회 (커서 기반 처리)
+		// 2) 커서 기반 데이터 로드
 		List<DrugProfile> rawList = rawRepo.findByIdGreaterThanOrderByIdAsc(lastId);
-
-		// 기존 저장된 조직화된 데이터 불러오기 (메모리에 유지)
 		List<OrganizedDrugProfile> organizedList = organizedRepo.findAll();
 
+		// 3) 처리 루프
 		for (DrugProfile raw : rawList) {
-			// 중단 요청 확인 → 처리 중단
-			if (!statusService.isRunning()) {
-				log.info(">>> Organize 중단됨 (현재 ID: {})", raw.getId());
-				break;
+			if (!runningFlag.get()) {
+				statusService.updateProgress(raw.getId(), false);
+				log(">>> Organize 중단됨 (ID: "+ raw.getId() +")");
+				return;
 			}
 
-			Optional<OrganizedDrugProfile> matched = organizedList.stream()
+			// 머지 로직
+			Optional<OrganizedDrugProfile> opt = organizedList.stream()
 				.filter(org -> isMatch(org, raw))
 				.findFirst();
 
-			if (matched.isPresent()) {
-				OrganizedDrugProfile org = matched.get();
+			if (opt.isPresent()) {
+				OrganizedDrugProfile org = opt.get();
 				org.setCompanyName(merge(org.getCompanyName(), raw.getCompanyName()));
 				org.setBrandName(merge(org.getBrandName(), raw.getBrandName()));
 				org.setInnName(merge(org.getInnName(), raw.getInnName()));
 				org.setCodeName(merge(org.getCodeName(), raw.getCodeName()));
-				log.info(">>> MERGE with existing group:");
+
+				log(">>> MERGE: "
+					+ raw.getCompanyName()
+					+ ", " + raw.getBrandName()
+					+ ", " + raw.getInnName()
+					+ ", " + raw.getCodeName());
+
 			} else {
 				organizedList.add(new OrganizedDrugProfile(
 					null,
@@ -71,26 +90,24 @@ public class DrugOrganizeService {
 					raw.getInnName(),
 					raw.getCodeName()
 				));
-				log.info(">>> NEW group created:");
+				log(">>> NEW GROUP: "+raw.getCompanyName()+")");
 			}
 
-			// 진행상황 저장 (재시작 시 이어서 처리 가능하게)
-			statusService.updateProgress(raw.getId(), true);
 
-			// 진행 로그 출력
-			log.info(" - Company: {}", raw.getCompanyName());
-			log.info(" - Brand  : {}", raw.getBrandName());
-			log.info(" - INN    : {}", raw.getInnName());
-			log.info(" - Code   : {}", raw.getCodeName());
+			// 진행 위치(DB 기록)
+			lastId = raw.getId();
+			statusService.updateProgress(lastId, true);
 		}
 
-		// 결과 저장 (전체 재저장 방식)
+		// 4) 결과 저장
 		organizedRepo.deleteAllInBatch();
 		organizedRepo.saveAll(organizedList);
-		log.info(">>> 저장 완료: 총 {}건", organizedList.size());
+		log(">>> 저장 완료: 총 "+organizedList.size()+"건");
 
-		// 집계 완료 후 상태 초기화
-		statusService.updateProgress(0L, false);
+		// 5) 종료 플래그 OFF
+		statusService.updateProgress(lastId, false);
+		runningFlag.set(false);
+		log(">>> Organize 종료 (최종 ID: "+lastId+")");
 	}
 
 
@@ -115,4 +132,10 @@ public class DrugOrganizeService {
 		if (newValue != null) merged.addAll(Arrays.asList(newValue.split("__")));
 		return String.join("__", merged);
 	}
+
+	public void log(String message) {
+		logWebSocketHandler.broadcast(message); // WebSocket 로그
+		log.info(message);
+	}
+
 }

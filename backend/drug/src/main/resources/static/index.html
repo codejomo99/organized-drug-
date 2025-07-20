@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Drug Organize</title>
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+<h1>Organize Controller</h1>
+
+<div class="toolbar">
+    <button onclick="startOrganize()">Organize 시작</button>
+    <button onclick="stopOrganize()">Organize 중단</button>
+    <button onclick="setOrganize()">엑셀 Import</button>
+    <div class="progress-badge">
+        진행: <span id="processed">0</span> / <span id="total">0</span>
+    </div>
+</div>
+
+<pre id="log"></pre>
+
+<script src="./js/app.js"></script>
+</body>
+</html>
