@@ -14,6 +14,7 @@ import com.side.drug.model.DrugProfile;
 import com.side.drug.model.OrganizedDrugProfile;
 import com.side.drug.repository.DrugProfileRepository;
 import com.side.drug.repository.OrganizedDrugProfileRepository;
+import com.side.drug.websocket.LogWebSocketHandler;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,31 +28,27 @@ public class DrugOrganizeService {
 	private final DrugProfileRepository rawRepo;
 	private final OrganizedDrugProfileRepository organizedRepo;
 	private final OrganizeStatusService statusService;
+	private final LogWebSocketHandler logWebSocketHandler;
 
-	@Transactional
 	public void organize() {
-		// 이미 실행 중이면 중복 방지
-		if (statusService.isRunning()) {
-			throw new IllegalStateException("이미 집계가 실행 중입니다.");
-		}
 
-		// 시작 전 실행 상태 true로 설정
-		Long lastId = statusService.getLastProcessedId();
+		// 1) 시작 플래그 ON
+		long lastId = statusService.getLastProcessedId();
 		statusService.updateProgress(lastId, true);
 
-		// 마지막 처리된 ID 이후부터 조회 (커서 기반 처리)
+		// 2) 커서 기반 데이터 로드
 		List<DrugProfile> rawList = rawRepo.findByIdGreaterThanOrderByIdAsc(lastId);
-
-		// 기존 저장된 조직화된 데이터 불러오기 (메모리에 유지)
 		List<OrganizedDrugProfile> organizedList = organizedRepo.findAll();
 
+		// 3) 처리 루프
 		for (DrugProfile raw : rawList) {
-			// 중단 요청 확인 → 처리 중단
+			// stop() 요청 시 바로 빠져나오기
 			if (!statusService.isRunning()) {
-				log.info(">>> Organize 중단됨 (현재 ID: {})", raw.getId());
+				log(">>> Organize 중단됨 (ID: "+raw.getId()+")");
 				break;
 			}
 
+			// 머지 로직
 			Optional<OrganizedDrugProfile> matched = organizedList.stream()
 				.filter(org -> isMatch(org, raw))
 				.findFirst();
@@ -62,7 +59,7 @@ public class DrugOrganizeService {
 				org.setBrandName(merge(org.getBrandName(), raw.getBrandName()));
 				org.setInnName(merge(org.getInnName(), raw.getInnName()));
 				org.setCodeName(merge(org.getCodeName(), raw.getCodeName()));
-				log.info(">>> MERGE with existing group:");
+				log(">>> MERGE: "+raw.getCompanyName()+")");
 			} else {
 				organizedList.add(new OrganizedDrugProfile(
 					null,
@@ -71,26 +68,29 @@ public class DrugOrganizeService {
 					raw.getInnName(),
 					raw.getCodeName()
 				));
-				log.info(">>> NEW group created:");
+				log(">>> NEW GROUP: "+raw.getCompanyName()+")");
 			}
 
-			// 진행상황 저장 (재시작 시 이어서 처리 가능하게)
-			statusService.updateProgress(raw.getId(), true);
+			//  테스트/디버깅용 잠깐 멈춤
+			try {
+				Thread.sleep(5);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+			}
 
-			// 진행 로그 출력
-			log.info(" - Company: {}", raw.getCompanyName());
-			log.info(" - Brand  : {}", raw.getBrandName());
-			log.info(" - INN    : {}", raw.getInnName());
-			log.info(" - Code   : {}", raw.getCodeName());
+			// 4) 진척도 업데이트 (플래그 유지)
+			lastId = raw.getId();
+			statusService.updateProgress(lastId, true);
 		}
 
-		// 결과 저장 (전체 재저장 방식)
+		// 5) 결과 저장
 		organizedRepo.deleteAllInBatch();
 		organizedRepo.saveAll(organizedList);
-		log.info(">>> 저장 완료: 총 {}건", organizedList.size());
+		log(">>> 저장 완료: 총 "+organizedList.size()+"건");
 
-		// 집계 완료 후 상태 초기화
-		statusService.updateProgress(0L, false);
+		// 6) 종료 플래그 OFF (lastId 유지)
+		statusService.updateProgress(lastId, false);
+		log(">>> Organize 종료 (최종 ID: "+lastId+")");
 	}
 
 
@@ -115,4 +115,10 @@ public class DrugOrganizeService {
 		if (newValue != null) merged.addAll(Arrays.asList(newValue.split("__")));
 		return String.join("__", merged);
 	}
+
+	public void log(String message) {
+		logWebSocketHandler.broadcast(message); // WebSocket 로그
+		log.info(message); // 콘솔 로그
+	}
+
 }
