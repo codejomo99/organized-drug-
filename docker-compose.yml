@@ -1,33 +1,44 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  postgres:
-    image: postgres
-    container_name: postgres-db
+  db:
+    image: postgres:13
+    container_name: drug_postgres
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB:       drug_profile
+    volumes:
+      - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_DB: drug_profile
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: 1234
-    networks:
-      - backend
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+    restart: always
 
-  spring:
+  app:
     build:
       context: ./backend/drug
-    container_name: spring-backend
+      dockerfile: Dockerfile
+    container_name: drug_app
     ports:
       - "8080:8080"
-    depends_on:
-      - postgres
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/drug_profile
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: 1234
-    networks:
-      - backend
 
-networks:
-  backend:
-    driver: bridge
+      SPRING_DATASOURCE_URL:                            jdbc:postgresql://db:5432/drug_profile
+      SPRING_DATASOURCE_USERNAME:                       postgres
+      SPRING_DATASOURCE_PASSWORD:                       1234
+      SPRING_JPA_HIBERNATE_DDL_AUTO:                    update
+      SPRING_JPA_SHOW_SQL:                              "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_FORMAT_SQL:       "true"
+      SPRING_JPA_PROPERTIES_HIBERNATE_DIALECT:          org.hibernate.dialect.PostgreSQLDialect
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  pgdata:
