@@ -9,6 +9,8 @@
 
 <button onclick="startOrganize()">Organize 시작</button>
 <button onclick="stopOrganize()">Organize 중단</button>
+<button onclick="setOrganize()">Excel 파일 저장</button>
+
 
 <pre id="log" style="background:#eee;padding:1rem;height:300px;overflow:auto;"></pre>
 
@@ -33,6 +35,31 @@
 
     function stopOrganize() {
         fetch('/organize/stop', {method: 'POST'});
+    }
+
+
+    function setOrganize() {
+        // 1) 진행중 메시지 추가
+        logBox.textContent += "[IMPORT] 진행중...\n";
+        logBox.scrollTop = logBox.scrollHeight;
+
+        fetch('/organize/import', { method: 'POST' })
+            .then(response => response.text())
+            .then(text => {
+                // 2) '진행중'을 '완료'로 교체
+                logBox.textContent = logBox.textContent.replace(
+                    /\[IMPORT\] 진행중\.\.\.\n$/,
+                    `[IMPORT] 완료: ${text}\n`
+                );
+                logBox.scrollTop = logBox.scrollHeight;
+            })
+            .catch(err => {
+                logBox.textContent = logBox.textContent.replace(
+                    /\[IMPORT\] 진행중\.\.\.\n$/,
+                    `[IMPORT] 오류: ${err}\n`
+                );
+                logBox.scrollTop = logBox.scrollHeight;
+            });
     }
 </script>
 </body>
