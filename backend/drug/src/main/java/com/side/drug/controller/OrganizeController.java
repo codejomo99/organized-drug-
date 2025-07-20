@@ -2,6 +2,7 @@ package com.side.drug.controller;
 
 import java.io.IOException;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,8 +32,12 @@ public class OrganizeController {
 
 	@PostMapping("/organize")
 	public ResponseEntity<String> runOrganize() {
+		if (organizeStatusService.isRunning()) {
+			return ResponseEntity.status(HttpStatus.CONFLICT).build();
+		}
+
 		organizeService.organize();
-		return ResponseEntity.ok("Organizing completed!");
+		return ResponseEntity.ok().build();
 	}
 
 	@PostMapping("/organize/stop")
