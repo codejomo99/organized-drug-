@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.side.drug.model.OrganizeStatus;
+import com.side.drug.repository.DrugProfileRepository;
 import com.side.drug.repository.OrganizeStatusRepository;
 import com.side.drug.websocket.LogWebSocketHandler;
 
@@ -19,6 +20,7 @@ public class OrganizeStatusService {
 
 	private final OrganizeStatusRepository repository;
 	private final LogWebSocketHandler logWebSocketHandler;
+	private final DrugProfileRepository drugProfileRepository;
 
 	public OrganizeStatus getOrCreate() {
 		return repository.findById(1L).orElseGet(() -> {
@@ -36,28 +38,15 @@ public class OrganizeStatusService {
 		status.setLastProcessedId(lastProcessedId);
 		status.setRunning(running);
 		repository.saveAndFlush(status);
-	}
 
-	public void stop() {
-		OrganizeStatus status = getOrCreate();
-		status.setRunning(false);
-		repository.save(status);
 
-		log(">>> 중단 요청이 되었습니다.");
-	}
-
-	@Transactional(propagation = Propagation.REQUIRES_NEW, isolation = Isolation.READ_COMMITTED, readOnly = true)
-	public boolean isRunning() {
-		return getOrCreate().isRunning();
+		long total = drugProfileRepository.findAll().size();
+		logWebSocketHandler.sendProgress(lastProcessedId, total);
 	}
 
 	public Long getLastProcessedId() {
 		return getOrCreate().getLastProcessedId();
 	}
 
-	public void log(String message) {
-		logWebSocketHandler.broadcast(message); // WebSocket 로그
-		log.info(message); // 콘솔 로그
-	}
 }
 

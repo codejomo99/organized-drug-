@@ -58,9 +58,9 @@ public class DrugOrganizeService {
 
 		// 3) 처리 루프
 		for (DrugProfile raw : rawList) {
-			// in‐memory 플래그만 체크 ⇒ 즉시 중단
 			if (!runningFlag.get()) {
-				log(">>> Organize 중단됨 (ID: "+raw.getId()+")");
+				statusService.updateProgress(raw.getId(), false);
+				log(">>> Organize 중단됨 (ID: "+ raw.getId() +")");
 				return;
 			}
 
@@ -135,7 +135,7 @@ public class DrugOrganizeService {
 
 	public void log(String message) {
 		logWebSocketHandler.broadcast(message); // WebSocket 로그
-		log.info(message); // 콘솔 로그
+		log.info(message);
 	}
 
 }

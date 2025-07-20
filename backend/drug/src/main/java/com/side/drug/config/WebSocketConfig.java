@@ -10,6 +10,13 @@ import com.side.drug.websocket.LogWebSocketHandler;
 @Configuration
 @EnableWebSocket
 public class WebSocketConfig implements WebSocketConfigurer {
+
+	private final LogWebSocketHandler handler;
+
+	public WebSocketConfig(LogWebSocketHandler handler) {
+		this.handler = handler;
+	}
+
 	@Override
 	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
 		registry.addHandler(new LogWebSocketHandler(), "/ws/logs")
